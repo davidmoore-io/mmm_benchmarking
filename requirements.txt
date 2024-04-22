@@ -1,0 +1,7 @@
+anthropic
+openai
+requests
+boto3
+python-dotenv
+colorama
+tk
