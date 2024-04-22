@@ -9,7 +9,7 @@ It's intended to support API and model assessment and selection for various time
 Future versions will support deeper evaluation across mutliple metrics and multi-modal model assessments, per the todo list in this README.
 
 ### Current Features
-git pus
+
 - Supports multiple language model APIs, including OpenAI, Custom OpenAI endpoints (LM Studio etc), Azure OpenAI, Anthropic, Hugging Face, and AWS Bedrock.
 - Uses a set of predefined sample queries to ensure a fair assessment across different services.
 - Constrains the response length to a fixed number of tokens, to further ensure fair assessment.
@@ -82,10 +82,10 @@ To run the benchmarking script, you need to have the following:
 
 1. Clone the repository:
    ```
-   git clone REPO URL
+   git clone git@github.com:davidmoore-io/mmm_benchmarking.git
    ```
 
-2. Install the required dependencies. This assumes you're using pyenv"
+2. Install the required dependencies. This assumes you're using pyenv
    ```
    pyenv install 3.12.2
    pyenv virtualenv-3.12.2 mmm-benchmarking
