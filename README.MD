@@ -74,7 +74,7 @@ Model ID's for each endpoint are currently hard coded, aligned to the newest ver
 
 To run the benchmarking script, you need to have the following:
 
-- Python 3.12.2 installed
+- Python 3.12.2 installed0
 - The libraries defined in requirements.txt file.
 - API credentials and access tokens for the APIs you want to benchmark
 
@@ -103,7 +103,7 @@ To run the benchmarking script, use the following command:
 ```
 python benchmark.py
 ```
-
+/\
 The script will iterate over the defined APIs, send sample queries, restraining the token length of repsones to ensure a like-for-like comparison between services, and measure the response times. It will output the average response time for each API.
 
 ## Benchmarking Process

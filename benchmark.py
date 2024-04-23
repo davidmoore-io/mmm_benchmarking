@@ -31,9 +31,7 @@ init()
 
 # Load environment variables from .env file
 load_dotenv()
-print("Loaded environment variables:")
-for key, value in os.environ.items():
-    print(f"{key}: {value}")
+print("Loaded environment variables...")
 
 # Set the maximum number of tokens for the response
 MAX_TOKENS = 1024
@@ -41,7 +39,6 @@ MAX_TOKENS = 1024
 # Benchmarking function for Anthropic's API
 def benchmark_anthropic(query):
     anthropic_api_key = os.getenv("ANTHROPIC_API_KEY")
-    print(f"Anthropic API Key: {anthropic_api_key}")  # Print the API key for debugging
     
     print(Fore.CYAN + "Testing Anthropic API..." + Style.RESET_ALL)
     client = anthropic.Anthropic(api_key=anthropic_api_key)
@@ -56,7 +53,6 @@ def benchmark_anthropic(query):
 
 # Benchmarking function for OpenAI's API 
 def benchmark_openai(query):
-    print(f"OpenAI API Key: {os.getenv("OPENAI_API_KEY")}")  # Print the API key for debugging
     
     print(Fore.CYAN + "Testing OpenAI API..." + Style.RESET_ALL)
     start_time = time.time()
@@ -66,7 +62,7 @@ def benchmark_openai(query):
     )
 
     response = client.chat.completions.create(
-        model="gpt-3.5-turbo",  # Replace with the desired model ID
+        model="gpt-4",  # Replace with the desired model ID
         messages=[{"role": "user", "content": query}],
         max_tokens=MAX_TOKENS,
         n=1,
@@ -80,8 +76,6 @@ def benchmark_openai(query):
 # Benchmarking function for Azure Open AI API endpoints
 def benchmark_azure_openai(query):
     azure_openai_api_key = os.getenv("AZURE_OPENAI_API_KEY")
-    print(f"Azure OpenAI API Key: {azure_openai_api_key}")  # Print the API key for debugging
-
     print(Fore.CYAN + "Testing Azure Open AI API..." + Style.RESET_ALL)
     start_time = time.time()
 
@@ -123,7 +117,6 @@ def benchmark_local_openai(query):
 # Benchmarking function for Hugging Face's API
 def benchmark_huggingface(query):
     huggingface_api_token = os.getenv("HUGGINGFACE_API_TOKEN")
-    print(f"Hugging Face API Token: {huggingface_api_token}")  # Print the API token for debugging
     
     if not huggingface_api_token or huggingface_api_token.strip() == "":
         print(Fore.YELLOW + "Skipping Hugging Face API benchmarking. API token not provided or invalid." + Style.RESET_ALL)
@@ -140,7 +133,7 @@ def benchmark_huggingface(query):
     end_time = time.time()
     return end_time - start_time
 
-# Benchmarking function for AWS Bedrock
+# Benchmarking function for AWS Bedrock - this is untested but should work per the docs.
 def benchmark_aws_bedrock(query):
     aws_access_key_id = os.getenv("AWS_ACCESS_KEY_ID")
     aws_secret_access_key = os.getenv("AWS_SECRET_ACCESS_KEY")
