@@ -159,6 +159,8 @@ If you've got some time on your hands, feel free to get involved in the below:
 
 
 ## Multimodal Assessment TODO List
+- [ ] **Long Context Model Benchmarking
+  - [ ] Needle in a haystack test
 
 - [ ] **Image Captioning**
   - [ ] Provide the model with images and ask it to generate descriptive captions or summaries
