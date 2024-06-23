@@ -1,289 +1,38 @@
-"""
-Language Model Benchmarking Project
-
-This script benchmarks the latency and response times of various large language model APIs.
-It sends sample queries to each API, measures the response times, and calculates the average
-response time for each API.
-
-To ensure a fair assessment across different services, the script:
-- Uses the same set of sample queries for all APIs.
-- Sets a consistent maximum number of tokens for the generated responses.
-- Iterates over each API and measures the response time under similar conditions.
-- Calculates the average response time across multiple iterations to account for variability.
-
-Note: This script currently focuses on benchmarking response times. Quality assessment of the
-generated responses is planned for future updates.
-"""
-
 import time
-import os
-from dotenv import load_dotenv
-import anthropic
-import openai
-from openai import AzureOpenAI
-from openai import OpenAI
-import requests
-import boto3
-from colorama import init, Fore, Style
+from abc import ABC, abstractmethod
+from colorama import Fore, Style
 
+class BaseBenchmark(ABC):
+    def __init__(self, api_name):
+        self.api_name = api_name
 
-api_models = {
-    "OpenAI": ["gpt-3.5-turbo", "gpt-4", "gpt-4-turbo-preview"],
-    "Local OpenAI": ["gpt-3.5-turbo", "gpt-4", "gpt-4-turbo-preview"],  # Adjust based on locally available models
-    "Azure OpenAI": ["gpt-35-turbo", "gpt-4", "gpt-4-32k"],  # Adjust based on deployed models
-    "Anthropic": ["claude-3-opus-20240229", "claude-3-sonnet-20240229", "claude-2.1"],
-    "Hugging Face": ["gpt2", "gpt2-medium", "gpt2-large"],  # Add or remove models as needed
-    "AWS Bedrock": ["anthropic.claude-v2", "ai21.j2-ultra", "amazon.titan-text-express-v1"]  # Adjust based on available models
-}
+    @abstractmethod
+    def setup_client(self):
+        pass
 
+    @abstractmethod
+    def invoke_model(self, client, query, model, max_tokens):
+        pass
 
-# Initialize colorama for colored output
-init()
-
-# Load environment variables from .env file
-load_dotenv()
-print("Loaded environment variables...")
-
-# Set the maximum number of tokens for the response
-MAX_TOKENS = 1024
-
-# Benchmarking function for Anthropic's API
-def benchmark_anthropic(query):
-    anthropic_api_key = os.getenv("ANTHROPIC_API_KEY")
-    
-    print(Fore.CYAN + "Testing Anthropic API..." + Style.RESET_ALL)
-    client = anthropic.Anthropic(api_key=anthropic_api_key)
-    start_time = time.time()
-    response = client.messages.create(
-        model="claude-3-opus-20240229",  # Use an appropriate model identifier
-        max_tokens=MAX_TOKENS,
-        messages=[{"role": "user", "content": query}]
-    )
-    end_time = time.time()
-    return end_time - start_time
-
-# Benchmarking function for OpenAI's API 
-def benchmark_openai(query, model):
-    print(Fore.CYAN + f"Testing OpenAI API with model {model}..." + Style.RESET_ALL)
-    start_time = time.time()
-
-    client = OpenAI(
-        api_key = os.getenv("OPENAI_API_KEY")
-    )
-
-    response = client.chat.completions.create(
-        model=model,
-        messages=[{"role": "user", "content": query}],
-        max_tokens=MAX_TOKENS,
-        n=1,
-        stop=None,
-        temperature=0.7,
-    )
-    end_time = time.time()
-    print(response)  # Access the response variable
-    return end_time - start_time
-
-# Benchmarking function for Azure Open AI API endpoints
-def benchmark_azure_openai(query):
-    azure_openai_api_key = os.getenv("AZURE_OPENAI_API_KEY")
-    print(Fore.CYAN + "Testing Azure Open AI API..." + Style.RESET_ALL)
-    start_time = time.time()
-
-    client = AzureOpenAI(
-        api_key = os.getenv("AZURE_OPENAI_API_KEY"),  
-        api_version = "2024-02-01",
-        azure_endpoint = os.getenv("AZURE_OPENAI_ENDPOINT")
-    )
-    response = client.chat.completions.create(
-        model="gpt-4",  # Replace with the desired model ID
-        messages=[{"role": "user", "content": query}],
-        max_tokens=MAX_TOKENS,
-        n=1,
-        stop=None,
-        temperature=0.7,
-    )
-    print(response)  # Access the response variable
-    end_time = time.time()
-    return end_time - start_time
-
-#Benchmarking function for Local OpenAI Compatible API endpoints
-def benchmark_local_openai(query, model):
-    client = OpenAI(base_url="http://localhost:1234/v1", api_key="lm-studio")
-    # client = OpenAI(base_url=os.getenv("LOCAL_OPENAI_BASE_URL"), api_key=os.getenv("LOCAL_OPENAI_API_KEY"))
-    print(Fore.CYAN + f"Testing Local OpenAI API with model {model}..." + Style.RESET_ALL)
-    start_time = time.time()
-    response = client.chat.completions.create(
-        model=model,  # Use the provided model parameter
-        messages=[{"role": "user", "content": query}],
-        max_tokens=MAX_TOKENS,
-        n=1,
-        stop=None,
-        temperature=0.7,
-    )
-    end_time = time.time()
-    print(response)  # Access the response variable
-    return end_time - start_time
-
-# Benchmarking function for Hugging Face's API
-def benchmark_huggingface(query, model):
-    huggingface_api_token = os.getenv("HUGGINGFACE_API_TOKEN")
-    
-    if not huggingface_api_token or huggingface_api_token.strip() == "":
-        print(Fore.YELLOW + "Skipping Hugging Face API benchmarking. API token not provided or invalid." + Style.RESET_ALL)
-        return None
-    
-    print(Fore.CYAN + f"Testing Hugging Face API with model {model}..." + Style.RESET_ALL)
-    start_time = time.time()
-    response = requests.post(
-        f"https://api-inference.huggingface.co/models/{model}",
-        headers={"Authorization": f"Bearer {huggingface_api_token}"},
-        json={"inputs": query, "max_length": MAX_TOKENS}
-    )
-    print(response)  # Access the response variable
-    end_time = time.time()
-    return end_time - start_time
-
-# Benchmarking function for AWS Bedrock - this is untested but should work per the docs.
-def benchmark_aws_bedrock(query, model):
-    aws_access_key_id = os.getenv("AWS_ACCESS_KEY_ID")
-    aws_secret_access_key = os.getenv("AWS_SECRET_ACCESS_KEY")
-    aws_region = os.getenv("AWS_REGION")
-    
-    if not aws_access_key_id or not aws_secret_access_key or not aws_region:
-        print(Fore.YELLOW + "Skipping AWS Bedrock benchmarking. AWS credentials not provided or invalid." + Style.RESET_ALL)
-        return None
-    
-    print(Fore.CYAN + f"Testing AWS Bedrock with model {model}..." + Style.RESET_ALL)
-    bedrock = boto3.client(
-        "bedrock",
-        aws_access_key_id=aws_access_key_id,
-        aws_secret_access_key=aws_secret_access_key,
-        region_name=aws_region
-    )
-    start_time = time.time()
-    response = bedrock.invoke_model(
-        modelId=model,
-        contentType="application/json",
-        accept="application/json",
-        body=json.dumps({
-            "prompt": query,
-            "max_tokens_to_sample": MAX_TOKENS,
-            "temperature": 0.7,
-            "top_p": 1,
-            "top_k": 250,
-            "stop_sequences": []
-        })
-    )
-    print(response)  # Access the response variable
-    end_time = time.time()
-    return end_time - start_time
-
-
-# List of sample queries to test
-queries = [
-    "What is the capital of France?",
-    # Reasoning: This query is a simple factual question that tests the model's ability to provide accurate information from its knowledge base.
-    # It assesses the model's capability to handle straightforward questions and retrieve specific facts.
-
-    "Explain the concept of machine learning in simple terms.",
-    # Reasoning: This query evaluates the model's ability to provide a clear and concise explanation of a technical concept.
-    # It tests the model's capacity to break down complex topics into easily understandable language, catering to a non-technical audience.
-
-    "What are the main differences between renewable and non-renewable energy sources?",
-    # Reasoning: This query assesses the model's ability to compare and contrast two related concepts.
-    # It requires the model to identify key distinguishing factors and present them in a structured manner, demonstrating its understanding of the subject matter.
-
-    "Suggest five creative ways to reduce plastic waste in everyday life.",
-    # Reasoning: This query challenges the model's creativity and problem-solving skills.
-    # It tests the model's ability to generate multiple unique ideas and provide practical solutions to a given problem.
-    # It evaluates the model's capacity for original thought and its awareness of environmental issues.
-
-    "Analyze the main themes and symbolism in the novel 'Hitchhiker's Guide to the Galaxy by Douglas Adams.",
-    # Reasoning: This query assesses the model's ability to perform literary analysis and interpretation.
-    # It tests the model's understanding of the deeper meanings, themes, and symbolic elements within a well-known literary work.
-    # It evaluates the model's capacity to provide insights and draw connections between different aspects of the novel.
-
-    "What are the potential benefits and drawbacks of artificial intelligence in healthcare?",
-    # Reasoning: This query evaluates the model's ability to discuss the implications and considerations surrounding the application of AI in a specific domain.
-    # It tests the model's capacity to present a balanced perspective, considering both the positive and negative aspects of the topic.
-    # It assesses the model's understanding of the ethical and practical implications of AI in healthcare.
-
-    "How can individuals and communities contribute to reducing the impact of climate change?",
-    # Reasoning: This query assesses the model's ability to provide actionable advice and recommendations on a global issue.
-    # It tests the model's understanding of climate change and its capacity to suggest practical steps that individuals and communities can take to mitigate its effects.
-    # It evaluates the model's awareness of environmental sustainability and its ability to provide guidance on making a positive impact.
-]
-
-# Number of iterations for each API
-num_iterations = 10
-
-# Dictionary to store the total response time for each API
-api_total_times = {}
-
-# List of available APIs
-available_apis = ["OpenAI", "Local OpenAI", "Azure OpenAI", "Anthropic", "Hugging Face", "AWS Bedrock"]
-
-# Benchmarking loop for each API and query
-def main():
-    print("\nAPI Benchmarking Tool\n---------------------")
-
-    # Display available APIs and prompt user for selection
-    print("Available APIs:")
-    for i, api in enumerate(available_apis, start=1):
-        print(f"{i}. {api}")
-
-    # Prompt user to enter comma-separated API numbers
-    selected_api_numbers = input("Enter the numbers of the APIs you want to benchmark (comma-separated): ")
-
-    # Convert user input to a list of selected API names
-    selected_api_numbers = [int(num.strip()) for num in selected_api_numbers.split(",")]
-    selected_apis = [available_apis[num - 1] for num in selected_api_numbers]
-
-    if not selected_apis:
-        print("\nNo APIs selected. Please select one or more APIs to benchmark.")
-        return
-
-    # Initialize dictionary to store total times for each API and model
-    api_model_total_times = {}
-
-    for api_name in selected_apis:
-        print(f"\nAvailable models for {api_name}:")
-        for i, model in enumerate(api_models[api_name], start=1):
-            print(f"{i}. {model}")
+    def run(self, query, model, max_tokens):
+        print(Fore.CYAN + f"Testing {self.api_name} with model {model}..." + Style.RESET_ALL)
         
-        selected_model_numbers = input(f"Enter the numbers of the models you want to benchmark for {api_name} (comma-separated): ")
-        selected_model_numbers = [int(num.strip()) for num in selected_model_numbers.split(",")]
-        selected_models = [api_models[api_name][num - 1] for num in selected_model_numbers]
+        try:
+            client = self.setup_client()
+            start_time = time.time()
+            response = self.invoke_model(client, query, model, max_tokens)
+            end_time = time.time()
+            
+            latency = end_time - start_time
+            output_text = self.extract_output(response)
+            
+            print(f"Response: {output_text[:100]}...")  # Print first 100 characters of the response
+            return latency, output_text
+        except Exception as e:
+            print(Fore.RED + f"Error benchmarking {self.api_name}: {str(e)}" + Style.RESET_ALL)
+            return None, None
 
-        benchmark_func = globals()[f"benchmark_{api_name.lower().replace(' ', '_')}"]
-        num_iterations = int(input(f"How many iterations would you like to run for {api_name}? "))
-
-        for model in selected_models:
-            print(f"\nBenchmarking {api_name} with model {model}...")
-
-            total_time = 0
-            for _ in range(num_iterations):
-                for query in queries:
-                    response_time = benchmark_func(query, model)
-                    if response_time is not None:
-                        total_time += response_time
-
-            if total_time > 0:
-                api_model_total_times[(api_name, model)] = total_time
-
-    # Calculate and print the average response time for each API and model
-    print("\nBenchmarking Results:")
-    for (api_name, model), total_time in api_model_total_times.items():
-        avg_time = total_time / (num_iterations * len(queries))
-
-        if avg_time < 0.5:
-            color = Fore.GREEN
-        elif avg_time < 1.0:
-            color = Fore.YELLOW
-        else:
-            color = Fore.RED
-
-        print(f"{api_name} ({model}) - Average response time: {color}{avg_time:.4f} seconds{Style.RESET_ALL}")
-
-if __name__ == "__main__":
-    main()
+    @abstractmethod
+    def extract_output(self, response):
+        """Extract the text output from the API response."""
+        pass

@@ -1,7 +1,7 @@
 import os
 from dotenv import load_dotenv
 from colorama import init
-from config import API_MODELS, QUERIES, MAX_TOKENS
+from config import API_MODELS, QUERIES_AND_REFERENCES, MAX_TOKENS
 from benchmarks import (
     OpenAIBenchmark,
     AzureOpenAIBenchmark,
@@ -11,6 +11,7 @@ from benchmarks import (
     AWSBedrockBenchmark
 )
 from utils import print_colored, get_user_input, parse_comma_separated_input
+from quality_metrics import calculate_bleu_score
 
 def main():
     init()  # Initialize colorama
@@ -58,27 +59,42 @@ def main():
         benchmark = benchmarks[api_name]
         for model in selected_models:
             total_time = 0
+            total_bleu = 0
             for _ in range(num_iterations):
-                for query in QUERIES:
-                    response_time = benchmark.run(query, model, MAX_TOKENS)
-                    if response_time is not None:
-                        total_time += response_time
+                for query_ref in QUERIES_AND_REFERENCES:
+                    query = query_ref["query"]
+                    reference = query_ref["reference"]
+                    latency, output = benchmark.run(query, model, MAX_TOKENS)
+                    if latency is not None and output is not None:
+                        total_time += latency
+                        bleu_score = calculate_bleu_score(reference, output)
+                        total_bleu += bleu_score
 
             if total_time > 0:
-                avg_time = total_time / (num_iterations * len(QUERIES))
-                results[(api_name, model)] = avg_time
+                avg_time = total_time / (num_iterations * len(QUERIES_AND_REFERENCES))
+                avg_bleu = total_bleu / (num_iterations * len(QUERIES_AND_REFERENCES))
+                results[(api_name, model)] = (avg_time, avg_bleu)
 
     # Print results
     print_colored("\nBenchmarking Results:", color="green")
-    for (api_name, model), avg_time in results.items():
+    for (api_name, model), (avg_time, avg_bleu) in results.items():
         if avg_time < 0.5:
-            color = "green"
+            time_color = "green"
         elif avg_time < 1.0:
-            color = "yellow"
+            time_color = "yellow"
         else:
-            color = "red"
+            time_color = "red"
 
-        print_colored(f"{api_name} ({model}) - Average response time: {avg_time:.4f} seconds", color=color)
+        if avg_bleu > 0.5:
+            bleu_color = "green"
+        elif avg_bleu > 0.3:
+            bleu_color = "yellow"
+        else:
+            bleu_color = "red"
+
+        print_colored(f"{api_name} ({model}):", color="cyan")
+        print_colored(f"  Average response time: {avg_time:.4f} seconds", color=time_color)
+        print_colored(f"  Average BLEU score: {avg_bleu:.4f}", color=bleu_color)
 
 if __name__ == "__main__":
     main()

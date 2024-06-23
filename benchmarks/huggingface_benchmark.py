@@ -16,6 +16,11 @@ class HuggingFaceBenchmark(BaseBenchmark):
         response = requests.post(
             f"https://api-inference.huggingface.co/models/{model}",
             headers={"Authorization": f"Bearer {api_token}"},
-            json={"inputs": query, "max_length": max_tokens}
+            json={"inputs": query, "parameters": {"max_length": max_tokens}}
         )
         return response.json()
+
+    def extract_output(self, response):
+        if isinstance(response, list) and len(response) > 0:
+            return response[0].get('generated_text', '').strip()
+        return ''

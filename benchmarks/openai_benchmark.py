@@ -22,3 +22,6 @@ class OpenAIBenchmark(BaseBenchmark):
             temperature=0.7,
         )
         return response
+
+    def extract_output(self, response):
+        return response.choices[0].message.content.strip()
