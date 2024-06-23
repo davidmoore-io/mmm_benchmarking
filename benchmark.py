@@ -26,6 +26,17 @@ import requests
 import boto3
 from colorama import init, Fore, Style
 
+
+api_models = {
+    "OpenAI": ["gpt-3.5-turbo", "gpt-4", "gpt-4-turbo-preview"],
+    "Local OpenAI": ["gpt-3.5-turbo", "gpt-4", "gpt-4-turbo-preview"],  # Adjust based on locally available models
+    "Azure OpenAI": ["gpt-35-turbo", "gpt-4", "gpt-4-32k"],  # Adjust based on deployed models
+    "Anthropic": ["claude-3-opus-20240229", "claude-3-sonnet-20240229", "claude-2.1"],
+    "Hugging Face": ["gpt2", "gpt2-medium", "gpt2-large"],  # Add or remove models as needed
+    "AWS Bedrock": ["anthropic.claude-v2", "ai21.j2-ultra", "amazon.titan-text-express-v1"]  # Adjust based on available models
+}
+
+
 # Initialize colorama for colored output
 init()
 
@@ -52,9 +63,8 @@ def benchmark_anthropic(query):
     return end_time - start_time
 
 # Benchmarking function for OpenAI's API 
-def benchmark_openai(query):
-    
-    print(Fore.CYAN + "Testing OpenAI API..." + Style.RESET_ALL)
+def benchmark_openai(query, model):
+    print(Fore.CYAN + f"Testing OpenAI API with model {model}..." + Style.RESET_ALL)
     start_time = time.time()
 
     client = OpenAI(
@@ -62,7 +72,7 @@ def benchmark_openai(query):
     )
 
     response = client.chat.completions.create(
-        model="gpt-4",  # Replace with the desired model ID
+        model=model,
         messages=[{"role": "user", "content": query}],
         max_tokens=MAX_TOKENS,
         n=1,
@@ -97,13 +107,13 @@ def benchmark_azure_openai(query):
     return end_time - start_time
 
 #Benchmarking function for Local OpenAI Compatible API endpoints
-def benchmark_local_openai(query):
+def benchmark_local_openai(query, model):
     client = OpenAI(base_url="http://localhost:1234/v1", api_key="lm-studio")
     # client = OpenAI(base_url=os.getenv("LOCAL_OPENAI_BASE_URL"), api_key=os.getenv("LOCAL_OPENAI_API_KEY"))
-    print(Fore.CYAN + "Testing Local OpenAI API..." + Style.RESET_ALL)
+    print(Fore.CYAN + f"Testing Local OpenAI API with model {model}..." + Style.RESET_ALL)
     start_time = time.time()
     response = client.chat.completions.create(
-        model="gpt-4",  # Replace with the desired model ID
+        model=model,  # Use the provided model parameter
         messages=[{"role": "user", "content": query}],
         max_tokens=MAX_TOKENS,
         n=1,
@@ -115,17 +125,17 @@ def benchmark_local_openai(query):
     return end_time - start_time
 
 # Benchmarking function for Hugging Face's API
-def benchmark_huggingface(query):
+def benchmark_huggingface(query, model):
     huggingface_api_token = os.getenv("HUGGINGFACE_API_TOKEN")
     
     if not huggingface_api_token or huggingface_api_token.strip() == "":
         print(Fore.YELLOW + "Skipping Hugging Face API benchmarking. API token not provided or invalid." + Style.RESET_ALL)
         return None
     
-    print(Fore.CYAN + "Testing Hugging Face API..." + Style.RESET_ALL)
+    print(Fore.CYAN + f"Testing Hugging Face API with model {model}..." + Style.RESET_ALL)
     start_time = time.time()
     response = requests.post(
-        "https://api-inference.huggingface.co/models/gpt2",
+        f"https://api-inference.huggingface.co/models/{model}",
         headers={"Authorization": f"Bearer {huggingface_api_token}"},
         json={"inputs": query, "max_length": MAX_TOKENS}
     )
@@ -134,7 +144,7 @@ def benchmark_huggingface(query):
     return end_time - start_time
 
 # Benchmarking function for AWS Bedrock - this is untested but should work per the docs.
-def benchmark_aws_bedrock(query):
+def benchmark_aws_bedrock(query, model):
     aws_access_key_id = os.getenv("AWS_ACCESS_KEY_ID")
     aws_secret_access_key = os.getenv("AWS_SECRET_ACCESS_KEY")
     aws_region = os.getenv("AWS_REGION")
@@ -143,7 +153,7 @@ def benchmark_aws_bedrock(query):
         print(Fore.YELLOW + "Skipping AWS Bedrock benchmarking. AWS credentials not provided or invalid." + Style.RESET_ALL)
         return None
     
-    print(Fore.CYAN + "Testing AWS Bedrock..." + Style.RESET_ALL)
+    print(Fore.CYAN + f"Testing AWS Bedrock with model {model}..." + Style.RESET_ALL)
     bedrock = boto3.client(
         "bedrock",
         aws_access_key_id=aws_access_key_id,
@@ -151,10 +161,18 @@ def benchmark_aws_bedrock(query):
         region_name=aws_region
     )
     start_time = time.time()
-    response = bedrock.generate_text(
-        model="gpt-3.5-turbo",
-        prompt=query,
-        max_tokens=MAX_TOKENS
+    response = bedrock.invoke_model(
+        modelId=model,
+        contentType="application/json",
+        accept="application/json",
+        body=json.dumps({
+            "prompt": query,
+            "max_tokens_to_sample": MAX_TOKENS,
+            "temperature": 0.7,
+            "top_p": 1,
+            "top_k": 250,
+            "stop_sequences": []
+        })
     )
     print(response)  # Access the response variable
     end_time = time.time()
@@ -209,9 +227,6 @@ available_apis = ["OpenAI", "Local OpenAI", "Azure OpenAI", "Anthropic", "Huggin
 def main():
     print("\nAPI Benchmarking Tool\n---------------------")
 
-    # List of available APIs
-    available_apis = ["OpenAI", "Local OpenAI", "Azure OpenAI", "Anthropic", "Hugging Face", "AWS Bedrock"]
-
     # Display available APIs and prompt user for selection
     print("Available APIs:")
     for i, api in enumerate(available_apis, start=1):
@@ -228,28 +243,37 @@ def main():
         print("\nNo APIs selected. Please select one or more APIs to benchmark.")
         return
 
-    # Initialize dictionary to store total times for each API
-    api_total_times = {}
+    # Initialize dictionary to store total times for each API and model
+    api_model_total_times = {}
 
     for api_name in selected_apis:
+        print(f"\nAvailable models for {api_name}:")
+        for i, model in enumerate(api_models[api_name], start=1):
+            print(f"{i}. {model}")
+        
+        selected_model_numbers = input(f"Enter the numbers of the models you want to benchmark for {api_name} (comma-separated): ")
+        selected_model_numbers = [int(num.strip()) for num in selected_model_numbers.split(",")]
+        selected_models = [api_models[api_name][num - 1] for num in selected_model_numbers]
+
         benchmark_func = globals()[f"benchmark_{api_name.lower().replace(' ', '_')}"]
         num_iterations = int(input(f"How many iterations would you like to run for {api_name}? "))
 
-        print(f"\nBenchmarking {api_name}...")
+        for model in selected_models:
+            print(f"\nBenchmarking {api_name} with model {model}...")
 
-        total_time = 0
-        for _ in range(num_iterations):
-            for query in queries:
-                response_time = benchmark_func(query)
-                if response_time is not None:
-                    total_time += response_time
+            total_time = 0
+            for _ in range(num_iterations):
+                for query in queries:
+                    response_time = benchmark_func(query, model)
+                    if response_time is not None:
+                        total_time += response_time
 
-        if total_time > 0:
-            api_total_times[api_name] = total_time
+            if total_time > 0:
+                api_model_total_times[(api_name, model)] = total_time
 
-    # Calculate and print the average response time for each API
+    # Calculate and print the average response time for each API and model
     print("\nBenchmarking Results:")
-    for api_name, total_time in api_total_times.items():
+    for (api_name, model), total_time in api_model_total_times.items():
         avg_time = total_time / (num_iterations * len(queries))
 
         if avg_time < 0.5:
@@ -259,7 +283,7 @@ def main():
         else:
             color = Fore.RED
 
-        print(f"{api_name} - Average response time: {color}{avg_time:.4f} seconds{Style.RESET_ALL}")
+        print(f"{api_name} ({model}) - Average response time: {color}{avg_time:.4f} seconds{Style.RESET_ALL}")
 
 if __name__ == "__main__":
     main()
