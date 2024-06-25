@@ -1,6 +1,6 @@
 import os
 from dotenv import load_dotenv
-from colorama import init
+from colorama import init, Fore
 from config import API_MODELS, QUERIES_AND_REFERENCES, MAX_TOKENS
 from benchmarks import (
     OpenAIBenchmark,
@@ -11,12 +11,12 @@ from benchmarks import (
     AWSBedrockBenchmark
 )
 from utils import print_colored, get_user_input, parse_comma_separated_input
-from quality_metrics import calculate_bleu_score
+from quality_metrics import calculate_quality_metrics
 
 def main():
     init()  # Initialize colorama
     load_dotenv()  # Load environment variables
-    print_colored("\nAPI Benchmarking Tool\n---------------------", color="cyan")
+    print_colored("\nAPI Benchmarking Tool\n---------------------", color=Fore.CYAN)
 
     benchmarks = {
         "OpenAI": OpenAIBenchmark(),
@@ -29,7 +29,7 @@ def main():
 
     # Display available APIs and prompt user for selection
     available_apis = list(API_MODELS.keys())
-    print_colored("Available APIs:", color="cyan")
+    print_colored("Available APIs:", color=Fore.CYAN)
     for i, api in enumerate(available_apis, start=1):
         print(f"{i}. {api}")
 
@@ -38,12 +38,12 @@ def main():
     if not selected_api_numbers:
         return
 
-    selected_apis = [available_apis[num - 1] for num in selected_api_numbers]
+    selected_apis = [available_apis[num - 1] for num in selected_api_numbers if 0 < num <= len(available_apis)]
 
     results = {}
 
     for api_name in selected_apis:
-        print_colored(f"\nAvailable models for {api_name}:", color="cyan")
+        print_colored(f"\nAvailable models for {api_name}:", color=Fore.CYAN)
         for i, model in enumerate(API_MODELS[api_name], start=1):
             print(f"{i}. {model}")
         
@@ -52,14 +52,19 @@ def main():
         if not selected_model_numbers:
             continue
 
-        selected_models = [API_MODELS[api_name][num - 1] for num in selected_model_numbers]
+        selected_models = [API_MODELS[api_name][num - 1] for num in selected_model_numbers if 0 < num <= len(API_MODELS[api_name])]
 
         num_iterations = int(get_user_input(f"How many iterations would you like to run for {api_name}? "))
 
         benchmark = benchmarks[api_name]
         for model in selected_models:
             total_time = 0
-            total_bleu = 0
+            total_metrics = {
+                'bleu': 0,
+                'rouge-1': 0,
+                'rouge-2': 0,
+                'rouge-l': 0
+            }
             for _ in range(num_iterations):
                 for query_ref in QUERIES_AND_REFERENCES:
                     query = query_ref["query"]
@@ -67,34 +72,40 @@ def main():
                     latency, output = benchmark.run(query, model, MAX_TOKENS)
                     if latency is not None and output is not None:
                         total_time += latency
-                        bleu_score = calculate_bleu_score(reference, output)
-                        total_bleu += bleu_score
+                        metrics = calculate_quality_metrics(reference, output)
+                        for key, value in metrics.items():
+                            total_metrics[key] += value
 
             if total_time > 0:
                 avg_time = total_time / (num_iterations * len(QUERIES_AND_REFERENCES))
-                avg_bleu = total_bleu / (num_iterations * len(QUERIES_AND_REFERENCES))
-                results[(api_name, model)] = (avg_time, avg_bleu)
+                avg_metrics = {k: v / (num_iterations * len(QUERIES_AND_REFERENCES)) for k, v in total_metrics.items()}
+                results[(api_name, model)] = (avg_time, avg_metrics)
 
     # Print results
-    print_colored("\nBenchmarking Results:", color="green")
-    for (api_name, model), (avg_time, avg_bleu) in results.items():
-        if avg_time < 0.5:
-            time_color = "green"
-        elif avg_time < 1.0:
-            time_color = "yellow"
-        else:
-            time_color = "red"
+    print_colored("\nBenchmarking Results:", color=Fore.GREEN)
+    for (api_name, model), (avg_time, avg_metrics) in results.items():
+        print_colored(f"{api_name} ({model}):", color=Fore.CYAN)
+        print_colored(f"  Average response time: {avg_time:.4f} seconds", color=get_time_color(avg_time))
+        print_colored(f"  Average BLEU score: {avg_metrics['bleu']:.4f}", color=get_metric_color(avg_metrics['bleu']))
+        print_colored(f"  Average ROUGE-1 score: {avg_metrics['rouge-1']:.4f}", color=get_metric_color(avg_metrics['rouge-1']))
+        print_colored(f"  Average ROUGE-2 score: {avg_metrics['rouge-2']:.4f}", color=get_metric_color(avg_metrics['rouge-2']))
+        print_colored(f"  Average ROUGE-L score: {avg_metrics['rouge-l']:.4f}", color=get_metric_color(avg_metrics['rouge-l']))
 
-        if avg_bleu > 0.5:
-            bleu_color = "green"
-        elif avg_bleu > 0.3:
-            bleu_color = "yellow"
-        else:
-            bleu_color = "red"
+def get_time_color(avg_time):
+    if avg_time < 0.5:
+        return Fore.GREEN
+    elif avg_time < 1.0:
+        return Fore.YELLOW
+    else:
+        return Fore.RED
 
-        print_colored(f"{api_name} ({model}):", color="cyan")
-        print_colored(f"  Average response time: {avg_time:.4f} seconds", color=time_color)
-        print_colored(f"  Average BLEU score: {avg_bleu:.4f}", color=bleu_color)
+def get_metric_color(score):
+    if score > 0.5:
+        return Fore.GREEN
+    elif score > 0.3:
+        return Fore.YELLOW
+    else:
+        return Fore.RED
 
 if __name__ == "__main__":
     main()

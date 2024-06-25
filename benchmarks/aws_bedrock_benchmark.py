@@ -17,24 +17,27 @@ class AWSBedrockBenchmark(BaseBenchmark):
             raise ValueError("AWS credentials not provided or invalid.")
         
         return boto3.client(
-            "bedrock",
+            "bedrock-runtime",
             aws_access_key_id=aws_access_key_id,
             aws_secret_access_key=aws_secret_access_key,
             region_name=aws_region
         )
 
     def invoke_model(self, client, query, model, max_tokens):
+        body = json.dumps({
+            "prompt": query,
+            "max_tokens_to_sample": max_tokens,
+            "temperature": 0.7,
+            "top_p": 1,
+            "top_k": 250,
+            "stop_sequences": []
+        })
+        
         response = client.invoke_model(
             modelId=model,
-            contentType="application/json",
-            accept="application/json",
-            body=json.dumps({
-                "prompt": query,
-                "max_tokens_to_sample": max_tokens,
-                "temperature": 0.7,
-                "top_p": 1,
-                "top_k": 250,
-                "stop_sequences": []
-            })
+            body=body
         )
-        return response
+        return json.loads(response['body'].read())
+
+    def extract_output(self, response):
+        return response.get('completion', '').strip()

@@ -13,7 +13,7 @@ class AzureOpenAIBenchmark(BaseBenchmark):
             raise ValueError("Azure OpenAI API key or endpoint not provided.")
         return AzureOpenAI(
             api_key=api_key,
-            api_version="2024-02-01",
+            api_version="2023-05-15",
             azure_endpoint=endpoint
         )
 

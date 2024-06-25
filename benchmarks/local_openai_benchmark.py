@@ -8,7 +8,7 @@ class LocalOpenAIBenchmark(BaseBenchmark):
 
     def setup_client(self):
         base_url = os.getenv("LOCAL_OPENAI_BASE_URL", "http://localhost:1234/v1")
-        api_key = os.getenv("LOCAL_OPENAI_API_KEY", "lm-studio")
+        api_key = os.getenv("LOCAL_OPENAI_API_KEY", "sk-111111111111111111111111111111111111111111111111")
         return OpenAI(base_url=base_url, api_key=api_key)
 
     def invoke_model(self, client, query, model, max_tokens):
