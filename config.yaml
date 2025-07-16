@@ -1,0 +1,60 @@
+# Enhanced LLM Benchmarking Tool Configuration
+
+# Database Configuration
+database:
+  evaluation_db: "evaluation.db"
+  ab_testing_db: "ab_testing.db"
+  
+# Logging Configuration
+logging:
+  level: "INFO"
+  format: "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+  file: "logs/benchmarking.log"
+  
+# Enhanced Metrics Configuration
+enhanced_metrics:
+  sentence_transformer_model: "all-MiniLM-L6-v2"
+  perplexity_n_gram_size: 2
+  enable_semantic_similarity: true
+  enable_perplexity: true
+  enable_factual_accuracy: true
+  enable_coherence: true
+  
+# Human Evaluation Configuration
+human_evaluation:
+  rating_scale: 
+    min: 1
+    max: 5
+  criteria:
+    - "relevance"
+    - "coherence" 
+    - "accuracy"
+    - "completeness"
+    - "clarity"
+    - "creativity"
+    - "helpfulness"
+  session_timeout_minutes: 60
+  
+# A/B Testing Configuration
+ab_testing:
+  randomize_response_order: true
+  confidence_scale:
+    min: 1
+    max: 5
+  comparison_types:
+    - "pairwise"
+  
+# Export Configuration
+export:
+  default_output_dir: "results"
+  timestamp_format: "%Y%m%d_%H%M%S"
+  formats:
+    - "json"
+    - "csv"
+    
+# Performance Configuration
+performance:
+  max_concurrent_requests: 10
+  request_timeout_seconds: 30
+  retry_attempts: 3
+  batch_size: 100
