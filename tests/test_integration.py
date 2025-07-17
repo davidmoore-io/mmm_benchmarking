@@ -24,7 +24,7 @@ class TestIntegration(unittest.TestCase):
     def test_modules_import_successfully(self):
         """Test that all main modules can be imported."""
         try:
-            from enhanced_quality_metrics import EnhancedQualityMetrics
+            from quality_metrics import EnhancedQualityMetrics
             from human_evaluation import HumanEvaluator
             from ab_testing import ABTestManager
             
@@ -40,7 +40,7 @@ class TestIntegration(unittest.TestCase):
         except ImportError as e:
             self.fail(f"Failed to import modules: {e}")
     
-    @patch('enhanced_quality_metrics.SentenceTransformer')
+    @patch('quality_metrics.SentenceTransformer')
     def test_enhanced_metrics_workflow(self, mock_transformer):
         """Test the enhanced metrics workflow."""
         # Mock the sentence transformer
@@ -48,7 +48,7 @@ class TestIntegration(unittest.TestCase):
         mock_model.encode.return_value = [[0.1, 0.2, 0.3]]
         mock_transformer.return_value = mock_model
         
-        from enhanced_quality_metrics import EnhancedQualityMetrics
+        from quality_metrics import EnhancedQualityMetrics
         
         metrics = EnhancedQualityMetrics()
         results = metrics.calculate_all_metrics(

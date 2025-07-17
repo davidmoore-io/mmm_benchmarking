@@ -7,7 +7,7 @@ import math
 # Add the parent directory to the path so we can import modules
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from enhanced_quality_metrics import (
+from quality_metrics import (
     PerplexityCalculator, 
     SemanticSimilarityCalculator, 
     TaskSpecificEvaluator,
@@ -58,7 +58,7 @@ class TestSemanticSimilarityCalculator(unittest.TestCase):
     
     def setUp(self):
         # Mock the SentenceTransformer to avoid downloading models during tests
-        with patch('enhanced_quality_metrics.SentenceTransformer') as mock_st:
+        with patch('quality_metrics.SentenceTransformer') as mock_st:
             mock_model = MagicMock()
             mock_model.encode.return_value = [[0.1, 0.2, 0.3]]
             mock_st.return_value = mock_model
@@ -90,7 +90,7 @@ class TestSemanticSimilarityCalculator(unittest.TestCase):
 class TestTaskSpecificEvaluator(unittest.TestCase):
     
     def setUp(self):
-        with patch('enhanced_quality_metrics.stopwords') as mock_stopwords:
+        with patch('quality_metrics.stopwords') as mock_stopwords:
             mock_stopwords.words.return_value = ['the', 'is', 'a', 'an']
             self.evaluator = TaskSpecificEvaluator()
             
@@ -135,10 +135,10 @@ class TestEnhancedQualityMetrics(unittest.TestCase):
     
     def setUp(self):
         # Mock all the sub-components to avoid external dependencies
-        with patch('enhanced_quality_metrics.PerplexityCalculator') as mock_perp, \
-             patch('enhanced_quality_metrics.SemanticSimilarityCalculator') as mock_sem, \
-             patch('enhanced_quality_metrics.TaskSpecificEvaluator') as mock_task, \
-             patch('enhanced_quality_metrics.nltk') as mock_nltk:
+        with patch('quality_metrics.PerplexityCalculator') as mock_perp, \
+             patch('quality_metrics.SemanticSimilarityCalculator') as mock_sem, \
+             patch('quality_metrics.TaskSpecificEvaluator') as mock_task, \
+             patch('quality_metrics.nltk') as mock_nltk:
             
             mock_nltk.data.find.side_effect = [None, None]  # Simulate data exists
             
@@ -149,7 +149,7 @@ class TestEnhancedQualityMetrics(unittest.TestCase):
         result = self.metrics.calculate_all_metrics("reference", "candidate")
         self.assertIsInstance(result, dict)
         
-    @patch('enhanced_quality_metrics.logger')
+    @patch('quality_metrics.logger')
     def test_calculate_all_metrics_handles_errors(self, mock_logger):
         """Test that calculate_all_metrics handles errors gracefully."""
         # Make perplexity calculation raise an exception
