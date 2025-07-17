@@ -66,6 +66,15 @@ To run the benchmarking tool, you need:
    pip install -r requirements.txt
    ```
 
+   or uv:
+
+   ```
+    uv python install 3.12.2
+    uv venv llm-benchmarking --python 3.12.2
+    source llm-benchmarking/bin/activate  # or llm-benchmarking\Scripts\activate on Windows
+    uv pip install -r requirements.txt
+   ```
+
 3. Set up API credentials:
    - Obtain necessary API keys, access tokens, or authentication credentials for each API you want to benchmark.
    - Create a `.env` file in the root directory, using the `.env-sample` file as a template. Add your API keys and endpoints as needed.
