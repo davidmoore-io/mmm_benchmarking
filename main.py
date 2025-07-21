@@ -23,9 +23,10 @@ from benchmarks import (
     AWSBedrockBenchmark
 )
 from utils import (
-    print_header, print_section, print_success, print_warning, print_error,
+    print_header, print_section, print_success, print_warning, print_error, print_info,
     create_selection_table, create_results_table, get_time_color, get_metric_color,
-    get_integer_input, get_confirmation, console, get_multi_selection_input, get_iterations_input
+    get_integer_input, get_confirmation, console, get_multi_selection_input, get_iterations_input,
+    display_key_value_pairs, show_menu, get_user_input
 )
 from quality_metrics import calculate_quality_metrics, EnhancedQualityMetrics
 from human_evaluation import HumanEvaluator, EvaluationInterface
@@ -127,10 +128,10 @@ class EnhancedBenchmarkingTool:
                             query = query_ref["query"]
                             reference = query_ref["reference"]
                             
-                            latency, output = benchmark.run(query, model, MAX_TOKENS)
-                            if latency is not None and output is not None:
+                            latency, response = benchmark.run(query, model, MAX_TOKENS)
+                            if latency is not None and response is not None:
                                 total_time += latency
-                                metrics = calculate_quality_metrics(reference, output)
+                                metrics = calculate_quality_metrics(reference, response)
                                 
                                 for key, value in metrics.items():
                                     total_metrics[key] += value
@@ -139,7 +140,7 @@ class EnhancedBenchmarkingTool:
                                 benchmark_results.append({
                                     'query': query,
                                     'reference': reference,
-                                    'response': output,
+                                    'response': response,
                                     'api_name': api_name,
                                     'model_name': model,
                                     'latency': latency,
@@ -447,15 +448,65 @@ def display_beautiful_results(results: dict):
         )
         console.print(insights)
 
+def display_enhanced_results(benchmark_results: List[dict]):
+    """Display enhanced benchmark results."""
+    print_section("⚡ Enhanced Quality Metrics")
+    
+    if not benchmark_results:
+        print_warning("No enhanced results to display")
+        return
+    
+    # Group results by API and model
+    grouped = {}
+    for result in benchmark_results:
+        if 'enhanced_metrics' not in result:
+            continue
+            
+        key = (result['api_name'], result['model_name'])
+        if key not in grouped:
+            grouped[key] = []
+        grouped[key].append(result)
+    
+    # Display aggregated enhanced results
+    for (api_name, model), group_results in grouped.items():
+        print_section(f"🔍 {api_name} - {model}")
+        
+        # Calculate averages for enhanced metrics
+        enhanced_metrics = group_results[0]['enhanced_metrics']
+        avg_enhanced = {}
+        
+        for metric_name in enhanced_metrics.keys():
+            values = [r['enhanced_metrics'][metric_name] for r in group_results 
+                     if isinstance(r['enhanced_metrics'][metric_name], (int, float))]
+            if values:
+                avg_enhanced[metric_name] = sum(values) / len(values)
+        
+        # Display enhanced metrics in a formatted way
+        if avg_enhanced:
+            # Format the metrics nicely
+            formatted_metrics = {}
+            for metric, value in avg_enhanced.items():
+                if metric == 'perplexity':
+                    formatted_metrics[f"📊 {metric}"] = f"{value:.2f} (lower is better)"
+                elif 'similarity' in metric:
+                    formatted_metrics[f"📈 {metric}"] = f"{value:.4f}"
+                elif 'accuracy' in metric or 'precision' in metric or 'recall' in metric:
+                    formatted_metrics[f"🎯 {metric}"] = f"{value:.4f}"
+                else:
+                    formatted_metrics[f"📝 {metric}"] = f"{value:.4f}"
+            
+            display_key_value_pairs(formatted_metrics, f"📊 Enhanced Metrics")
+        console.print()
+
 def run_benchmark_with_progress(benchmark, query_ref, model, max_tokens):
     """Run a single benchmark with progress indication."""
     query = query_ref["query"]
     reference = query_ref["reference"]
     
-    latency, output = benchmark.run(query, model, max_tokens)
+    latency, response = benchmark.run(query, model, max_tokens)
     
-    if latency is not None and output is not None:
-        metrics = calculate_quality_metrics(reference, output)
+    if latency is not None and response is not None:
+        metrics = calculate_quality_metrics(reference, response)
         return latency, metrics
     return None, None
 
@@ -465,12 +516,14 @@ def benchmark(
     apis: Optional[List[str]] = typer.Option(None, help="APIs to benchmark"),
     models: Optional[List[str]] = typer.Option(None, help="Models to benchmark"),
     iterations: int = typer.Option(3, help="Number of iterations per model"),
-    output: Optional[str] = typer.Option(None, help="Output file for results")
+    output: Optional[str] = typer.Option(None, help="Output file for results"),
+    enhanced: bool = typer.Option(False, help="Include enhanced quality metrics (perplexity, semantic similarity, etc.)")
 ):
     """
     🚀 Run LLM API benchmarks with beautiful progress tracking and results.
     
     Compare response times and quality metrics across multiple providers.
+    Use --enhanced flag to include advanced metrics like perplexity and semantic similarity.
     """
     load_dotenv()
     
@@ -488,7 +541,13 @@ def benchmark(
             print_error("No APIs selected. Exiting...")
             return
         
+        # Ask about enhanced metrics if not specified
+        if not enhanced:
+            enhanced = get_confirmation("Include enhanced quality metrics (perplexity, semantic similarity)?")
+        
         results = {}
+        benchmark_results = []  # Store individual results for enhanced processing
+        enhanced_metrics_calc = EnhancedQualityMetrics() if enhanced else None
         
         for api_name in selected_apis:
             print_section(f"🔧 Configuring {api_name}")
@@ -544,14 +603,40 @@ def benchmark(
                     
                     for iteration in range(num_iterations):
                         for query_ref in QUERIES_AND_REFERENCES:
-                            latency, metrics = run_benchmark_with_progress(
-                                benchmark, query_ref, model, MAX_TOKENS
-                            )
+                            query = query_ref["query"]
+                            reference = query_ref["reference"]
                             
-                            if latency is not None and metrics is not None:
+                            latency, response = benchmark.run(query, model, MAX_TOKENS)
+                            
+                            if latency is not None and response is not None:
                                 total_time += latency
+                                metrics = calculate_quality_metrics(reference, response)
+                                
                                 for key, value in metrics.items():
                                     total_metrics[key] += value
+                                
+                                # Store individual result for enhanced processing
+                                result = {
+                                    'query': query,
+                                    'reference': reference,
+                                    'response': response,
+                                    'api_name': api_name,
+                                    'model_name': model,
+                                    'latency': latency,
+                                    'iteration': iteration,
+                                    'basic_metrics': metrics
+                                }
+                                
+                                # Add enhanced metrics if requested
+                                if enhanced and enhanced_metrics_calc:
+                                    try:
+                                        enhanced_metrics = enhanced_metrics_calc.calculate_all_metrics(reference, response)
+                                        result['enhanced_metrics'] = enhanced_metrics
+                                    except Exception as e:
+                                        logger.error(f"Error calculating enhanced metrics: {e}")
+                                        result['enhanced_metrics'] = {}
+                                
+                                benchmark_results.append(result)
                             
                             progress.update(task, advance=1)
                 
@@ -574,11 +659,20 @@ def benchmark(
         # Display results
         display_beautiful_results(results)
         
+        # Display enhanced results if requested
+        if enhanced and benchmark_results:
+            display_enhanced_results(benchmark_results)
+        
         if output:
             # Save results to file
             import json
+            save_data = {
+                'summary_results': results,
+                'detailed_results': benchmark_results,
+                'enhanced_metrics_included': enhanced
+            }
             with open(output, 'w') as f:
-                json.dump(results, f, indent=2, default=str)
+                json.dump(save_data, f, indent=2, default=str)
             print_success(f"Results saved to {output}")
     
     else:
@@ -646,8 +740,8 @@ def interactive():
     tool = EnhancedBenchmarkingTool()
     
     menu_options = [
-        "🚀 Run standard benchmarks",
-        "⚡ Run enhanced benchmarks",
+        "🚀 Run benchmarks (basic metrics)",
+        "⚡ Run benchmarks (with enhanced metrics)",
         "👥 Setup human evaluation",
         "🔍 Run human evaluation",
         "🆚 Setup A/B testing",
@@ -664,9 +758,11 @@ def interactive():
             break
             
         if choice == 1:
-            tool.run_standard_benchmarks()
+            # Run basic benchmarks using the main benchmark function
+            benchmark(interactive=True, enhanced=False)
         elif choice == 2:
-            tool.run_enhanced_benchmarks()
+            # Run enhanced benchmarks using the main benchmark function  
+            benchmark(interactive=True, enhanced=True)
         elif choice == 3:
             tool.setup_human_evaluation()
         elif choice == 4:
@@ -687,12 +783,6 @@ def interactive():
             print_success("👋 Goodbye!")
             break
 
-@app.command()
-def enhanced():
-    """⚡ Run enhanced benchmarks with advanced quality metrics."""
-    load_dotenv()
-    tool = EnhancedBenchmarkingTool()
-    tool.run_enhanced_benchmarks()
 
 @app.command()
 def setup_human_eval():
