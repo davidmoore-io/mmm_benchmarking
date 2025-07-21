@@ -30,16 +30,18 @@ def install_requirements():
         sys.exit(1)
 
 def download_nltk_data():
-    """Download required NLTK data."""
+    """Download required NLTK data using our safe import."""
     try:
-        logger.info("Downloading NLTK data...")
-        import nltk
-        nltk.download('punkt', quiet=True)
-        nltk.download('stopwords', quiet=True)
-        logger.info("NLTK data downloaded successfully")
+        logger.info("Setting up NLTK data...")
+        from utils import safe_nltk_import
+        
+        if safe_nltk_import():
+            logger.info("NLTK data setup completed successfully")
+        else:
+            logger.warning("NLTK data setup failed, but continuing (functionality may be limited)")
     except Exception as e:
-        logger.error(f"Failed to download NLTK data: {e}")
-        sys.exit(1)
+        logger.error(f"Failed to setup NLTK data: {e}")
+        # Don't exit - continue with setup as NLTK is optional
 
 def create_directories():
     """Create necessary directories."""

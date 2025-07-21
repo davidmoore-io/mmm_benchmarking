@@ -548,24 +548,37 @@ class ABTestInterface:
     
     def __init__(self, manager: ABTestManager):
         self.manager = manager
+        from utils import (
+            print_header, print_section, print_success, print_warning, print_error,
+            get_user_input, get_integer_input, get_confirmation, console
+        )
+        self.print_header = print_header
+        self.print_section = print_section
+        self.print_success = print_success
+        self.print_warning = print_warning
+        self.print_error = print_error
+        self.get_user_input = get_user_input
+        self.get_integer_input = get_integer_input
+        self.get_confirmation = get_confirmation
+        self.console = console
     
     def run_comparison_session(self, experiment_id: str, evaluator_id: str):
         """Run an interactive comparison session."""
-        print(f"\n=== A/B Testing Session ===")
-        print(f"Experiment ID: {experiment_id}")
-        print(f"Evaluator ID: {evaluator_id}")
+        self.print_header("🆚 A/B Testing Session", f"Experiment: {experiment_id} | Evaluator: {evaluator_id}")
         
+        comparison_count = 0
         while True:
             # Get next task
             tasks = self.manager.db.get_pending_tasks(experiment_id, evaluator_id, limit=1)
             if not tasks:
-                print("\nNo more comparison tasks available.")
+                self.print_warning("No more comparison tasks available.")
                 break
             
             task = tasks[0]
+            comparison_count += 1
             
             # Display comparison
-            self._display_comparison(task)
+            self._display_comparison(task, comparison_count)
             
             # Collect preference
             preference, confidence, reasoning = self._collect_preference()
@@ -574,72 +587,80 @@ class ABTestInterface:
             if self.manager.submit_comparison_result(
                 task.id, evaluator_id, preference, confidence, reasoning
             ):
-                print("✓ Comparison result submitted successfully!")
+                self.print_success("✅ Comparison result submitted successfully!")
             else:
-                print("✗ Failed to submit comparison result.")
+                self.print_error("❌ Failed to submit comparison result.")
             
             # Ask if user wants to continue
-            continue_eval = input("\nContinue with next comparison? (y/n): ").lower().strip()
-            if continue_eval != 'y':
+            if not self.get_confirmation("Continue with next comparison?", default=True):
                 break
         
-        print("\n=== Comparison Session Complete ===")
+        self.print_header("🏁 Comparison Session Complete", f"Comparisons completed: {comparison_count}")
     
-    def _display_comparison(self, task: ABTestTask):
+    def _display_comparison(self, task: ABTestTask, comparison_number: int):
         """Display a comparison task."""
-        print(f"\n{'='*80}")
-        print(f"Query: {task.query}")
-        print(f"{'='*80}")
+        from rich.panel import Panel
+        from rich.columns import Columns
         
-        print(f"\nResponse A ({task.response_a.api_name} - {task.response_a.model_name}):")
-        print(f"{task.response_a.response_text}")
+        self.print_section(f"📊 Comparison {comparison_number}")
         
-        print(f"\nResponse B ({task.response_b.api_name} - {task.response_b.model_name}):")
-        print(f"{task.response_b.response_text}")
+        # Query
+        query_panel = Panel(task.query, title="❓ Query", border_style="blue")
+        self.console.print(query_panel)
         
+        # Responses side by side
+        response_a_panel = Panel(
+            task.response_a.response_text,
+            title=f"🅰️ Response A ({task.response_a.api_name} - {task.response_a.model_name})",
+            border_style="green"
+        )
+        
+        response_b_panel = Panel(
+            task.response_b.response_text,
+            title=f"🅱️ Response B ({task.response_b.api_name} - {task.response_b.model_name})",
+            border_style="red"
+        )
+        
+        # Display responses in columns
+        columns = Columns([response_a_panel, response_b_panel], equal=True)
+        self.console.print(columns)
+        
+        # Reference answer if available
         if task.reference_text:
-            print(f"\nReference Answer:")
-            print(f"{task.reference_text}")
-        
-        print(f"\n{'='*80}")
+            ref_panel = Panel(task.reference_text, title="✅ Reference Answer", border_style="cyan")
+            self.console.print(ref_panel)
     
     def _collect_preference(self) -> Tuple[PreferenceChoice, int, str]:
         """Collect user preference."""
-        print("\nWhich response do you prefer?")
-        print("1. Response A")
-        print("2. Response B")
-        print("3. No preference")
+        from rich.panel import Panel
+        
+        self.print_section("🤔 Which response do you prefer?")
+        
+        # Show options
+        choice_info = """
+        🅰️ Response A
+        🅱️ Response B  
+        ⚖️ No preference
+        """
+        self.console.print(Panel(choice_info, title="📊 Preference Options", border_style="cyan"))
         
         # Get preference
-        while True:
-            try:
-                choice = int(input("Your choice (1-3): "))
-                if choice == 1:
-                    preference = PreferenceChoice.RESPONSE_A
-                    break
-                elif choice == 2:
-                    preference = PreferenceChoice.RESPONSE_B
-                    break
-                elif choice == 3:
-                    preference = PreferenceChoice.NO_PREFERENCE
-                    break
-                else:
-                    print("Please enter 1, 2, or 3.")
-            except ValueError:
-                print("Please enter a valid number.")
+        choice = self.get_integer_input("Your choice (1-3)", minimum=1, maximum=3)
+        if choice == 1:
+            preference = PreferenceChoice.RESPONSE_A
+        elif choice == 2:
+            preference = PreferenceChoice.RESPONSE_B
+        elif choice == 3:
+            preference = PreferenceChoice.NO_PREFERENCE
+        else:
+            preference = PreferenceChoice.NO_PREFERENCE  # Default
         
         # Get confidence
-        while True:
-            try:
-                confidence = int(input("Confidence level (1-5): "))
-                if 1 <= confidence <= 5:
-                    break
-                else:
-                    print("Please enter a confidence level between 1 and 5.")
-            except ValueError:
-                print("Please enter a valid number.")
+        confidence = self.get_integer_input("🎯 Confidence level (1-5)", minimum=1, maximum=5)
+        if confidence is None:
+            confidence = 3  # Default to medium confidence
         
         # Get reasoning
-        reasoning = input("Reasoning (optional): ").strip()
+        reasoning = self.get_user_input("💭 Reasoning (optional, press Enter to skip)")
         
         return preference, confidence, reasoning if reasoning else None

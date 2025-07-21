@@ -430,77 +430,108 @@ class EvaluationInterface:
     
     def __init__(self, evaluator: HumanEvaluator):
         self.evaluator = evaluator
+        from utils import (
+            print_header, print_section, print_success, print_warning, print_error,
+            get_user_input, get_integer_input, get_confirmation, console
+        )
+        self.print_header = print_header
+        self.print_section = print_section
+        self.print_success = print_success
+        self.print_warning = print_warning
+        self.print_error = print_error
+        self.get_user_input = get_user_input
+        self.get_integer_input = get_integer_input
+        self.get_confirmation = get_confirmation
+        self.console = console
     
     def run_evaluation_session(self, evaluator_id: str):
         """Run an interactive evaluation session."""
-        print(f"\n=== Starting Evaluation Session ===")
-        print(f"Evaluator ID: {evaluator_id}")
+        self.print_header("🔍 Human Evaluation Session", f"Evaluator ID: {evaluator_id}")
         
         session_id = self.evaluator.start_evaluation_session(evaluator_id)
-        print(f"Session ID: {session_id}")
+        self.print_success(f"Session ID: {session_id}")
         
+        task_count = 0
         while True:
             # Get next task
             task = self.evaluator.get_next_task(evaluator_id)
             if not task:
-                print("\nNo more tasks available for evaluation.")
+                self.print_warning("No more tasks available for evaluation.")
                 break
             
+            task_count += 1
+            
             # Display task
-            self._display_task(task)
+            self._display_task(task, task_count)
             
             # Collect ratings
             ratings = self._collect_ratings()
             
             # Submit evaluation
             if self.evaluator.submit_evaluation(task.id, evaluator_id, ratings):
-                print("✓ Evaluation submitted successfully!")
+                self.print_success("✅ Evaluation submitted successfully!")
             else:
-                print("✗ Failed to submit evaluation.")
+                self.print_error("❌ Failed to submit evaluation.")
             
             # Ask if user wants to continue
-            continue_eval = input("\nContinue with next task? (y/n): ").lower().strip()
-            if continue_eval != 'y':
+            if not self.get_confirmation("Continue with next task?", default=True):
                 break
         
-        print("\n=== Evaluation Session Complete ===")
+        self.print_header("🏁 Evaluation Session Complete", f"Tasks completed: {task_count}")
     
-    def _display_task(self, task: EvaluationTask):
+    def _display_task(self, task: EvaluationTask, task_number: int):
         """Display an evaluation task."""
-        print(f"\n{'='*60}")
-        print(f"Task ID: {task.id}")
-        print(f"API: {task.api_name}")
-        print(f"Model: {task.model_name}")
-        print(f"{'='*60}")
+        from rich.panel import Panel
+        from rich.text import Text
         
-        print(f"\nQuery:\n{task.query}")
-        print(f"\nReference Answer:\n{task.reference_text}")
-        print(f"\nModel Response:\n{task.candidate_text}")
-        print(f"\n{'='*60}")
+        self.print_section(f"📋 Task {task_number}")
+        
+        # Task info
+        task_info = f"🆔 Task ID: {task.id}\n🔧 API: {task.api_name}\n🤖 Model: {task.model_name}"
+        self.console.print(Panel(task_info, title="Task Information", border_style="cyan"))
+        
+        # Query
+        query_panel = Panel(task.query, title="❓ Query", border_style="blue")
+        self.console.print(query_panel)
+        
+        # Reference answer
+        ref_panel = Panel(task.reference_text, title="✅ Reference Answer", border_style="green")
+        self.console.print(ref_panel)
+        
+        # Model response
+        response_panel = Panel(task.candidate_text, title="🤖 Model Response", border_style="yellow")
+        self.console.print(response_panel)
     
     def _collect_ratings(self) -> Dict[EvaluationCriteria, Tuple[int, str]]:
         """Collect ratings from the evaluator."""
+        from rich.panel import Panel
+        from rich.table import Table
+        
         ratings = {}
         
-        print("\nPlease rate the response on the following criteria (1-5 scale):")
-        print("1 = Very Poor, 2 = Poor, 3 = Fair, 4 = Good, 5 = Excellent")
+        # Show rating scale
+        scale_info = """
+        📊 Rating Scale:
+        • 1 = Very Poor
+        • 2 = Poor  
+        • 3 = Fair
+        • 4 = Good
+        • 5 = Excellent
+        """
+        self.console.print(Panel(scale_info, title="📏 Rating Guidelines", border_style="cyan"))
+        
+        self.print_section("📋 Please rate the response on the following criteria")
         
         for criterion in EvaluationCriteria:
-            print(f"\n{criterion.value.title()}:")
+            self.console.print(f"\n[bold cyan]🎯 {criterion.value.title()}:[/bold cyan]")
             
             # Get score
-            while True:
-                try:
-                    score = int(input(f"Score (1-5): "))
-                    if 1 <= score <= 5:
-                        break
-                    else:
-                        print("Please enter a score between 1 and 5.")
-                except ValueError:
-                    print("Please enter a valid number.")
+            score = self.get_integer_input(f"Score (1-5)", minimum=1, maximum=5)
+            if score is None:
+                score = 3  # Default to fair if cancelled
             
             # Get comment
-            comment = input("Comment (optional): ").strip()
+            comment = self.get_user_input("💭 Comment (optional, press Enter to skip)")
             
             ratings[criterion] = (score, comment if comment else None)
         

@@ -1,7 +1,32 @@
+"""
+Quality Metrics Module
+
+This module implements comprehensive quality assessment metrics including:
+- Basic BLEU and ROUGE scores
+- Advanced perplexity calculations
+- Contextual embedding similarity using sentence transformers
+- Semantic similarity measures
+- Task-specific evaluations
+"""
+
+import math
+import numpy as np
+from typing import Dict, List, Tuple, Optional, Any
+from sklearn.metrics.pairwise import cosine_similarity
+from sentence_transformers import SentenceTransformer
+import nltk
 from nltk.tokenize import word_tokenize
+from nltk.corpus import stopwords
 from collections import Counter
 from math import exp, log
 from rouge import Rouge
+import logging
+from utils import safe_nltk_import
+
+# Configure logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
 
 def calculate_bleu_score(reference, candidate, max_n=4):
     """
@@ -12,8 +37,13 @@ def calculate_bleu_score(reference, candidate, max_n=4):
     :param max_n: int, the maximum n-gram order to consider (default: 4)
     :return: float, the BLEU score
     """
-    reference_tokens = word_tokenize(reference.lower())
-    candidate_tokens = word_tokenize(candidate.lower())
+    try:
+        reference_tokens = word_tokenize(reference.lower())
+        candidate_tokens = word_tokenize(candidate.lower())
+    except LookupError:
+        logger.warning("NLTK tokenizer not available. Using basic split.")
+        reference_tokens = reference.lower().split()
+        candidate_tokens = candidate.lower().split()
     
     reference_length = len(reference_tokens)
     candidate_length = len(candidate_tokens)
@@ -29,7 +59,17 @@ def calculate_bleu_score(reference, candidate, max_n=4):
     if sum(clipped_counts.values()) == 0:
         return 0
     
-    geometric_mean = exp(sum(log(clipped_counts[n] / max(1, candidate_length - n + 1)) for n in range(1, max_n + 1)) / max_n)
+    # Calculate geometric mean with safe handling of zero counts
+    log_probs = []
+    for n in range(1, max_n + 1):
+        count = clipped_counts[n]
+        possible_ngrams = max(1, candidate_length - n + 1)
+        if count > 0:
+            log_probs.append(log(count / possible_ngrams))
+        else:
+            log_probs.append(log(1e-10))  # Small probability for zero counts
+    
+    geometric_mean = exp(sum(log_probs) / max_n)
     
     return brevity_penalty * geometric_mean
 
@@ -65,3 +105,356 @@ def calculate_quality_metrics(reference, candidate):
         'bleu': bleu_score,
         **rouge_scores
     }
+
+
+class PerplexityCalculator:
+    """
+    Calculate perplexity scores for language model performance evaluation.
+    """
+    
+    def __init__(self):
+        self.vocab_size = None
+        self.token_counts = None
+        
+    def calculate_perplexity(self, reference_text: str, candidate_text: str) -> float:
+        """
+        Calculate perplexity score based on n-gram probability distributions.
+        
+        Args:
+            reference_text (str): Reference text for comparison
+            candidate_text (str): Generated text to evaluate
+            
+        Returns:
+            float: Perplexity score (lower is better)
+        """
+        try:
+            # Tokenize texts
+            try:
+                ref_tokens = word_tokenize(reference_text.lower())
+                cand_tokens = word_tokenize(candidate_text.lower())
+            except LookupError:
+                logger.warning("NLTK tokenizer not available. Using basic split.")
+                ref_tokens = reference_text.lower().split()
+                cand_tokens = candidate_text.lower().split()
+            
+            if not cand_tokens:
+                return float('inf')
+            
+            # Build n-gram models
+            ref_bigrams = self._get_bigrams(ref_tokens)
+            cand_bigrams = self._get_bigrams(cand_tokens)
+            
+            # Calculate probability
+            total_log_prob = 0
+            n_bigrams = len(cand_bigrams)
+            
+            for bigram in cand_bigrams:
+                prob = self._bigram_probability(bigram, ref_bigrams, ref_tokens)
+                if prob > 0:
+                    total_log_prob += math.log(prob)
+                else:
+                    total_log_prob += math.log(1e-10)  # Small probability for unseen bigrams
+            
+            # Calculate perplexity
+            average_log_prob = total_log_prob / n_bigrams if n_bigrams > 0 else 0
+            perplexity = math.exp(-average_log_prob)
+            
+            return perplexity
+            
+        except Exception as e:
+            logger.error(f"Error calculating perplexity: {e}")
+            return float('inf')
+    
+    def _get_bigrams(self, tokens: List[str]) -> List[Tuple[str, str]]:
+        """Get bigrams from token list."""
+        return [(tokens[i], tokens[i + 1]) for i in range(len(tokens) - 1)]
+    
+    def _bigram_probability(self, bigram: Tuple[str, str], 
+                          ref_bigrams: List[Tuple[str, str]], 
+                          ref_tokens: List[str]) -> float:
+        """Calculate bigram probability with smoothing."""
+        first_word, second_word = bigram
+        
+        # Count occurrences
+        bigram_count = ref_bigrams.count(bigram)
+        first_word_count = ref_tokens.count(first_word)
+        
+        # Add-one smoothing
+        vocab_size = len(set(ref_tokens))
+        
+        if first_word_count > 0:
+            return (bigram_count + 1) / (first_word_count + vocab_size)
+        else:
+            return 1 / vocab_size
+
+
+class SemanticSimilarityCalculator:
+    """
+    Calculate semantic similarity using sentence transformers and various similarity metrics.
+    """
+    
+    def __init__(self, model_name: str = 'all-MiniLM-L6-v2'):
+        """
+        Initialize with a sentence transformer model.
+        
+        Args:
+            model_name (str): Name of the sentence transformer model to use
+        """
+        try:
+            self.model = SentenceTransformer(model_name)
+            logger.info(f"Loaded sentence transformer model: {model_name}")
+        except Exception as e:
+            logger.error(f"Error loading model {model_name}: {e}")
+            self.model = None
+    
+    def calculate_semantic_similarity(self, reference_text: str, 
+                                    candidate_text: str) -> Dict[str, float]:
+        """
+        Calculate various semantic similarity metrics.
+        
+        Args:
+            reference_text (str): Reference text
+            candidate_text (str): Generated text to evaluate
+            
+        Returns:
+            Dict[str, float]: Dictionary of similarity scores
+        """
+        if self.model is None:
+            return {
+                'cosine_similarity': 0.0,
+                'euclidean_distance': 1.0,
+                'manhattan_distance': 1.0,
+                'semantic_textual_similarity': 0.0
+            }
+        
+        try:
+            # Generate embeddings
+            ref_embedding = self.model.encode([reference_text])
+            cand_embedding = self.model.encode([candidate_text])
+            
+            # Calculate cosine similarity
+            cosine_sim = cosine_similarity(ref_embedding, cand_embedding)[0][0]
+            
+            # Calculate euclidean distance (normalized)
+            euclidean_dist = np.linalg.norm(ref_embedding - cand_embedding)
+            euclidean_sim = 1 / (1 + euclidean_dist)
+            
+            # Calculate manhattan distance (normalized)
+            manhattan_dist = np.sum(np.abs(ref_embedding - cand_embedding))
+            manhattan_sim = 1 / (1 + manhattan_dist)
+            
+            # Semantic textual similarity (using cosine as proxy)
+            sts_score = max(0, cosine_sim)
+            
+            return {
+                'cosine_similarity': float(cosine_sim),
+                'euclidean_similarity': float(euclidean_sim),
+                'manhattan_similarity': float(manhattan_sim),
+                'semantic_textual_similarity': float(sts_score)
+            }
+            
+        except Exception as e:
+            logger.error(f"Error calculating semantic similarity: {e}")
+            return {
+                'cosine_similarity': 0.0,
+                'euclidean_similarity': 0.0,
+                'manhattan_similarity': 0.0,
+                'semantic_textual_similarity': 0.0
+            }
+
+
+class TaskSpecificEvaluator:
+    """
+    Evaluate responses for specific tasks with domain-specific metrics.
+    """
+    
+    def __init__(self):
+        try:
+            self.stop_words = set(stopwords.words('english'))
+        except LookupError:
+            logger.warning("NLTK stopwords not available. Using empty set.")
+            self.stop_words = set()
+    
+    def evaluate_factual_accuracy(self, reference_text: str, 
+                                 candidate_text: str) -> Dict[str, float]:
+        """
+        Evaluate factual accuracy by checking key facts and entities.
+        
+        Args:
+            reference_text (str): Reference text with correct facts
+            candidate_text (str): Generated text to evaluate
+            
+        Returns:
+            Dict[str, float]: Factual accuracy metrics
+        """
+        try:
+            # Extract key facts (simplified approach)
+            ref_facts = self._extract_key_facts(reference_text)
+            cand_facts = self._extract_key_facts(candidate_text)
+            
+            # Calculate fact overlap
+            if not ref_facts:
+                return {'factual_accuracy': 0.0, 'fact_recall': 0.0, 'fact_precision': 0.0}
+            
+            correct_facts = len(ref_facts.intersection(cand_facts))
+            total_ref_facts = len(ref_facts)
+            total_cand_facts = len(cand_facts)
+            
+            # Calculate metrics
+            accuracy = correct_facts / total_ref_facts if total_ref_facts > 0 else 0.0
+            recall = correct_facts / total_ref_facts if total_ref_facts > 0 else 0.0
+            precision = correct_facts / total_cand_facts if total_cand_facts > 0 else 0.0
+            
+            return {
+                'factual_accuracy': accuracy,
+                'fact_recall': recall,
+                'fact_precision': precision
+            }
+            
+        except Exception as e:
+            logger.error(f"Error evaluating factual accuracy: {e}")
+            return {'factual_accuracy': 0.0, 'fact_recall': 0.0, 'fact_precision': 0.0}
+    
+    def evaluate_coherence(self, text: str) -> float:
+        """
+        Evaluate text coherence using simple heuristics.
+        
+        Args:
+            text (str): Text to evaluate
+            
+        Returns:
+            float: Coherence score (0-1)
+        """
+        try:
+            sentences = nltk.sent_tokenize(text)
+            
+            if len(sentences) < 2:
+                return 1.0
+            
+            # Calculate sentence similarity for coherence
+            coherence_scores = []
+            
+            for i in range(len(sentences) - 1):
+                similarity = self._sentence_similarity(sentences[i], sentences[i + 1])
+                coherence_scores.append(similarity)
+            
+            return np.mean(coherence_scores) if coherence_scores else 0.0
+            
+        except Exception as e:
+            logger.error(f"Error evaluating coherence: {e}")
+            return 0.0
+    
+    def _extract_key_facts(self, text: str) -> set:
+        """Extract key facts from text (simplified approach)."""
+        # Simple fact extraction based on named entities and key phrases
+        try:
+            words = word_tokenize(text.lower())
+        except LookupError:
+            words = text.lower().split()
+        words = [w for w in words if w.isalpha() and w not in self.stop_words]
+        
+        # Return unique important words as a proxy for facts
+        return set(words)
+    
+    def _sentence_similarity(self, sent1: str, sent2: str) -> float:
+        """Calculate similarity between two sentences using word overlap."""
+        try:
+            words1 = set(word_tokenize(sent1.lower()))
+            words2 = set(word_tokenize(sent2.lower()))
+        except LookupError:
+            words1 = set(sent1.lower().split())
+            words2 = set(sent2.lower().split())
+        
+        intersection = words1.intersection(words2)
+        union = words1.union(words2)
+        
+        return len(intersection) / len(union) if union else 0.0
+
+
+class EnhancedQualityMetrics:
+    """
+    Main class that combines all enhanced quality metrics.
+    """
+    
+    def __init__(self):
+        # Ensure NLTK data is available with better error handling
+        if not safe_nltk_import():
+            logger.warning("NLTK data setup failed. Some functionality may be limited.")
+        
+        self.perplexity_calc = PerplexityCalculator()
+        self.semantic_calc = SemanticSimilarityCalculator()
+        self.task_evaluator = TaskSpecificEvaluator()
+    
+    def calculate_all_metrics(self, reference_text: str, 
+                            candidate_text: str) -> Dict[str, Any]:
+        """
+        Calculate all enhanced quality metrics.
+        
+        Args:
+            reference_text (str): Reference text for comparison
+            candidate_text (str): Generated text to evaluate
+            
+        Returns:
+            Dict[str, Any]: Comprehensive metrics dictionary
+        """
+        metrics = {}
+        
+        # Calculate perplexity
+        try:
+            metrics['perplexity'] = self.perplexity_calc.calculate_perplexity(
+                reference_text, candidate_text
+            )
+        except Exception as e:
+            logger.error(f"Error calculating perplexity: {e}")
+            metrics['perplexity'] = float('inf')
+        
+        # Calculate semantic similarity
+        try:
+            semantic_metrics = self.semantic_calc.calculate_semantic_similarity(
+                reference_text, candidate_text
+            )
+            metrics.update(semantic_metrics)
+        except Exception as e:
+            logger.error(f"Error calculating semantic similarity: {e}")
+            metrics.update({
+                'cosine_similarity': 0.0,
+                'euclidean_similarity': 0.0,
+                'manhattan_similarity': 0.0,
+                'semantic_textual_similarity': 0.0
+            })
+        
+        # Calculate task-specific metrics
+        try:
+            factual_metrics = self.task_evaluator.evaluate_factual_accuracy(
+                reference_text, candidate_text
+            )
+            metrics.update(factual_metrics)
+            
+            coherence_score = self.task_evaluator.evaluate_coherence(candidate_text)
+            metrics['coherence'] = coherence_score
+            
+        except Exception as e:
+            logger.error(f"Error calculating task-specific metrics: {e}")
+            metrics.update({
+                'factual_accuracy': 0.0,
+                'fact_recall': 0.0,
+                'fact_precision': 0.0,
+                'coherence': 0.0
+            })
+        
+        return metrics
+
+
+def calculate_enhanced_quality_metrics(reference_text: str, candidate_text: str) -> Dict[str, Any]:
+    """
+    Convenience function to calculate enhanced quality metrics.
+    
+    Args:
+        reference_text (str): Reference text for comparison
+        candidate_text (str): Generated text to evaluate
+        
+    Returns:
+        Dict[str, Any]: Comprehensive metrics dictionary
+    """
+    enhanced_metrics = EnhancedQualityMetrics()
+    return enhanced_metrics.calculate_all_metrics(reference_text, candidate_text)
