@@ -13,12 +13,12 @@ class AnthropicBenchmark(BaseBenchmark):
         return anthropic.Anthropic(api_key=api_key)
 
     def invoke_model(self, client, query, model, max_tokens):
-        response = client.completions.create(
+        response = client.messages.create(
             model=model,
-            max_tokens_to_sample=max_tokens,
-            prompt=f"\n\nHuman: {query}\n\nAssistant:",
+            max_tokens=max_tokens,
+            messages=[{"role": "user", "content": query}],
         )
         return response
 
     def extract_output(self, response):
-        return response.completion.strip()
+        return response.content[0].text.strip()

@@ -1,4 +1,5 @@
 import time
+import traceback
 from abc import ABC, abstractmethod
 from colorama import Fore, Style
 
@@ -30,8 +31,10 @@ class BaseBenchmark(ABC):
             latency = end_time - start_time
             output = self.extract_output(response)
             
-            print(f"Response: {output[:100]}...")  # Print first 100 characters of the response
+            print(f"Response: {output[:100].encode('utf-8', errors='replace').decode('utf-8')}...")  # Print first 100 characters of the response
             return latency, output
         except Exception as e:
             print(Fore.RED + f"Error benchmarking {self.api_name}: {str(e)}" + Style.RESET_ALL)
+            print(Fore.YELLOW + "Full traceback:" + Style.RESET_ALL)
+            traceback.print_exc()
             return None, None
