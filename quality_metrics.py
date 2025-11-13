@@ -59,7 +59,17 @@ def calculate_bleu_score(reference, candidate, max_n=4):
     if sum(clipped_counts.values()) == 0:
         return 0
     
-    geometric_mean = exp(sum(log(clipped_counts[n] / max(1, candidate_length - n + 1)) for n in range(1, max_n + 1)) / max_n)
+    # Calculate geometric mean with safe handling of zero counts
+    log_probs = []
+    for n in range(1, max_n + 1):
+        count = clipped_counts[n]
+        possible_ngrams = max(1, candidate_length - n + 1)
+        if count > 0:
+            log_probs.append(log(count / possible_ngrams))
+        else:
+            log_probs.append(log(1e-10))  # Small probability for zero counts
+    
+    geometric_mean = exp(sum(log_probs) / max_n)
     
     return brevity_penalty * geometric_mean
 
